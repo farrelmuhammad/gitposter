@@ -1,9 +1,11 @@
-import type { MetaFunction } from "@remix-run/node";
-import { Link } from "@remix-run/react";
+import type { LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
+import { json, Link, redirect, useOutletContext } from "@remix-run/react";
 import { Github } from "lucide-react";
 import { AppLogo } from "~/components/app-logo";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
+import { SupabaseOutletContext } from "~/lib/supabase";
+import { getSupabaseWithSessionAndHeaders } from "~/lib/supabase.server";
 
 export const meta: MetaFunction = () => {
     return [
@@ -12,7 +14,28 @@ export const meta: MetaFunction = () => {
     ];
 };
 
+export let loader = async ({ request }: LoaderFunctionArgs) => {
+    const { serverSession, headers } = await getSupabaseWithSessionAndHeaders({ request });
+
+    if (serverSession) {
+        return redirect("/gitposts", { headers });
+    }
+
+    return json({ success: true }, { headers });
+}
+
 export default function Login() {
+    const { supabase, domainUrl } = useOutletContext<SupabaseOutletContext>();
+
+    const handleSignIn = async () => {
+        await supabase.auth.signInWithOAuth({
+            provider: "github",
+            options: {
+                redirectTo: `${domainUrl}/resources/auth/callback`,
+            }
+        });
+    }
+
     return (
         <section className="w-full bg-white min-h-screen flex flex-col">
             <nav className="flex items-center space-x-2 p-4">
@@ -38,7 +61,7 @@ export default function Login() {
                 </div>
                 <Card className="relative group overflow-hidden rounded-lg">
                     <CardContent className="p-1 bg-gradient-to-r from-orange-700 via-blue-500 to-green-400 bg-300% animate-gradient">
-                        <Button onClick={() => console.log("login")}>
+                        <Button onClick={handleSignIn}>
                             <Github className="mr-2 h-4 w-4" />
                             Github
                         </Button>

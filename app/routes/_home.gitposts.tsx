@@ -1,4 +1,4 @@
-import { useLoaderData, useNavigation } from "@remix-run/react";
+import { redirect, useLoaderData, useNavigation } from "@remix-run/react";
 import { PostSearch } from "~/components/post-search";
 import { Separator } from "~/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
@@ -7,18 +7,39 @@ import { Post } from "~/components/post";
 import { ViewLikes } from "~/components/view-likes";
 import { ViewComments } from "~/components/view-comments";
 import { WritePost } from "~/components/write-post";
+import { getSupabaseWithSessionAndHeaders } from "~/lib/supabase.server";
+import { getAllPostsWithDetails } from "~/lib/database.server";
+import { combinePostsWithLikes, formatToTwitterDate, getUserDataFromSession } from "~/lib/utils";
 
-export const loader = ({ request }: LoaderFunctionArgs) => {
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+    const { supabase, serverSession, headers } = await getSupabaseWithSessionAndHeaders({ request });
+
+    if (!serverSession) {
+        return redirect("/login", { headers });
+    }
+
     const url = new URL(request.url);
     const searchParams = url.searchParams;
     const query = searchParams.get("query");
 
-    return json({ query });
+    const { data } = await getAllPostsWithDetails({ dbClient: supabase });
+
+    const {
+        userId: sessionUserId,
+        // userName,
+        // userAvatarUrl
+    } = getUserDataFromSession(serverSession);
+
+    const posts = combinePostsWithLikes(data, sessionUserId);
+
+    return json({ query, posts }, { headers });
 }
 
 export default function Gitposts() {
-    const { query } = useLoaderData<typeof loader>();
+    const { query, posts } = useLoaderData<typeof loader>();
     const navigation = useNavigation();
+
+    const post = posts[0];
 
     const isSearching = Boolean(
         navigation.location &&
@@ -40,16 +61,16 @@ export default function Gitposts() {
                     <Separator />
                     <PostSearch isSearching={isSearching} searchQuery={query} />
                     <Post
-                        avatarUrl={"https://avatars.githubusercontent.com/u/81765631?v=4"}
-                        name="farrel muhammad"
-                        username="farrelmuhammaad"
-                        title={"## markdown title"}
-                        userId="123"
-                        id="456"
-                        dateTimeString="20, Nov 2024"
+                        avatarUrl={post.author!.avatar_url}
+                        name={post.author!.name}
+                        username={post.author!.usernname}
+                        title={post.title}
+                        userId={post.author!.id}
+                        id={post.id}
+                        dateTimeString={formatToTwitterDate(post.created_at)}
                     >
-                        <ViewLikes likes={69} likedByUser={true} pathname={`/profile/farrelmuhammaad`} />
-                        <ViewComments comments={69} pathname={`/profile/farrelmuhammaad`} />
+                        <ViewLikes likes={post.likes} likedByUser={post.isLikedByUser} pathname={`/profile/farrelmuhammaad`} />
+                        <ViewComments comments={post.comments.length} pathname={`/profile/farrelmuhammaad`} />
                     </Post>
                 </TabsContent>
                 <TabsContent value="write-posts">
